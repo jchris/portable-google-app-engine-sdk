@@ -301,7 +301,7 @@ class MatcherDispatcher(URLDispatcher):
     path variable supplied to this method is ignored.
     """
     cookies = ', '.join(headers.getheaders('cookie'))
-    email, admin = self._get_user_info(cookies)
+    email, nickname, admin = self._get_user_info(cookies)
 
     for matcher in self._url_matchers:
       dispatcher, matched_path, requires_login, admin_only = matcher.Match(relative_url)
@@ -479,8 +479,9 @@ def SetupEnvironment(cgi_path,
   env['CONTENT_LENGTH'] = headers.getheader('content-length', '')
 
   cookies = ', '.join(headers.getheaders('cookie'))
-  email, admin = get_user_info(cookies)
+  email, nickname, admin = get_user_info(cookies)
   env['USER_EMAIL'] = email
+
   if admin:
     env['USER_IS_ADMIN'] = '1'
 
