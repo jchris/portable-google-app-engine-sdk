@@ -33,6 +33,10 @@ import cgi
 import os
 import sys
 import urllib
+import logging
+import sha
+from django.utils import simplejson
+from google.appengine.api import urlfetch
 
 
 CONTINUE_PARAM = 'continue'
@@ -47,6 +51,8 @@ LOGOUT_PARAM = 'action=%s' % LOGOUT_ACTION
 
 COOKIE_NAME = 'dev_appserver_login'
 
+# changing this will invalidate all outstanding sessions
+COOKIE_SECRET = 'so_super_secret_omg' 
 
 def GetUserInfo(http_cookie, cookie_name=COOKIE_NAME):
   """Get the requestor's user info from the HTTP cookie in the CGI environment.
@@ -66,37 +72,53 @@ def GetUserInfo(http_cookie, cookie_name=COOKIE_NAME):
   if cookie_name in cookie:
     cookie_value = cookie[cookie_name].value
 
-  email, admin = (cookie_value.split(':') + ['', ''])[:2]
-  return email, (admin == 'True')
+  email, nickname, admin, hsh = (cookie_value.split(':') + ['', '', '', ''])[:4]
+
+  if email == '':
+    nickname = ''
+    admin = ''
+  else:
+    vhsh = sha.new(email+nickname+admin+COOKIE_SECRET).hexdigest()
+    if hsh != vhsh:
+      logging.info(email+" had invalid cookie")
+      # todo clear the cookie
+      # redirect to os.environ['PATH_INFO'] with the cookier clearing?
+    
+  return email, nickname, (admin == 'True')
 
 
-def CreateCookieData(email, admin):
+def CreateCookieData(email, nickname, admin):
   """Creates cookie payload data.
 
   Args:
-    email, admin: Parameters to incorporate into the cookie.
+    email, nickname, admin: Parameters to incorporate into the cookie.
 
   Returns:
-    String containing the cookie payload.
+    String containing the cookie payload, with a validating hash
   """
+  
   admin_string = 'False'
   if admin:
     admin_string = 'True'
-  return '%s:%s' % (email, admin_string)
+  hsh = sha.new(email+nickname+admin_string+COOKIE_SECRET).hexdigest()
+    
+  return '%s:%s:%s:%s' % (email, nickname, admin_string, hsh)
 
 
-def SetUserInfoCookie(email, admin, cookie_name=COOKIE_NAME):
+def SetUserInfoCookie(email, nickname, admin, cookie_name=COOKIE_NAME):
   """Creates a cookie to set the user information for the requestor.
 
   Args:
     email: Email to set for the user.
+    nickname: Nickname to set for the user.
     admin: True if the user should be admin; False otherwise.
     cookie_name: Name of the cookie that stores the user info.
 
   Returns:
     'Set-Cookie' header for setting the user info of the requestor.
   """
-  cookie_value = CreateCookieData(email, admin)
+  
+  cookie_value = CreateCookieData(email, nickname, admin)
   set_cookie = Cookie.SimpleCookie()
   set_cookie[cookie_name] = cookie_value
   set_cookie[cookie_name]['path'] = '/'
@@ -117,74 +139,6 @@ def ClearUserInfoCookie(cookie_name=COOKIE_NAME):
   set_cookie[cookie_name]['path'] = '/'
   set_cookie[cookie_name]['max-age'] = '0'
   return '%s\r\n' % set_cookie
-
-
-LOGIN_TEMPLATE = """<html>
-<head>
-  <title>Login</title>
-</head>
-<body>
-
-<form method='get' action='%(login_url)s'
-      style='text-align:center; font: 13px sans-serif'>
-  <div style='width: 20em; margin: 1em auto;
-              text-align:left;
-              padding: 0 2em 1.25em 2em;
-              background-color: #d6e9f8;
-              border: 2px solid #67a7e3'>
-    <h3>%(login_message)s</h3>
-    <p style='padding: 0; margin: 0'>
-      <label for='email' style="width: 3em">Email:</label>
-      <input name='email' type='text' value='%(email)s' id='email'/>
-    </p>
-    <p style='margin: .5em 0 0 3em; font-size:12px'>
-      <input name='admin' type='checkbox' value='True'
-       %(admin_checked)s id='admin'/>
-        <label for='admin'>Sign in as Administrator</label>
-    </p>
-    <p style='margin-left: 3em'>
-      <input name='action' value='Login' type='submit'
-             id='submit-login' />
-      <input name='action' value='Logout' type='submit'
-             id='submit-logout' />
-    </p>
-  </div>
-  <input name='continue' type='hidden' value='%(continue_url)s'/>
-</form>
-
-</body>
-</html>
-"""
-
-
-def RenderLoginTemplate(login_url, continue_url, email, admin):
-  """Renders the login page.
-
-  Args:
-    login_url, continue_url, email, admin: Parameters passed to
-      LoginCGI.
-
-  Returns:
-    String containing the contents of the login page.
-  """
-  login_message = 'Not logged in'
-  if email:
-    login_message = 'Logged in'
-  admin_checked = ''
-  if admin:
-    admin_checked = 'checked'
-
-  template_dict = {
-
-
-    'email': email or 'test\x40example.com',
-    'admin_checked': admin_checked,
-    'login_message': login_message,
-    'login_url': login_url,
-    'continue_url': continue_url
-  }
-
-  return LOGIN_TEMPLATE % template_dict
 
 
 def LoginRedirect(login_url,
@@ -210,81 +164,66 @@ def LoginRedirect(login_url,
   outfile.write('Status: 302 Requires login\r\n')
   outfile.write('Location: %s\r\n\r\n' % redirect_url)
 
+def LoginServiceRedirect(dest_url, endpoint, outfile):
+  redirect_url = '%s?%s=%s' % (endpoint, CONTINUE_PARAM, urllib.quote(dest_url))
+                                           
+  outfile.write('Status: 302 Redirecting to login service URL\r\n')
+  outfile.write('Location: %s\r\n' % redirect_url)
+  outfile.write('\r\n')
 
-def LoginCGI(login_url,
-             email,
-             admin,
-             action,
-             set_email,
-             set_admin,
-             continue_url,
-             outfile):
-  """Runs the login CGI.
-
-  This CGI does not care about the method at all. For both POST and GET the
-  client will be redirected to the continue URL.
-
-  Args:
-    login_url: URL used to run the CGI.
-    email: Current email address of the requesting user.
-    admin: True if the requesting user is an admin; False otherwise.
-    action: The action used to run the CGI; 'Login' for a login action, 'Logout'
-      for when a logout should occur.
-    set_email: Email to set for the user; Empty if no email should be set.
-    set_admin: True if the user should be an admin; False otherwise.
-    continue_url: URL to which the user should be redirected when the CGI
-      finishes loading; defaults to the login_url with no parameters (showing
-      current status) if not supplied.
-    outfile: File-like object to which all output data should be written.
-  """
-  redirect_url = ''
+def Logout(continue_url, outfile):
   output_headers = []
+  output_headers.append(ClearUserInfoCookie())  
 
-  if action:
-    if action.lower() == LOGOUT_ACTION.lower():
-      output_headers.append(ClearUserInfoCookie())
-    elif set_email:
-      output_headers.append(SetUserInfoCookie(set_email, set_admin))
+  outfile.write('Status: 302 Redirecting to continue URL\r\n')
+  for header in output_headers:
+    outfile.write(header)
+  outfile.write('Location: %s\r\n' % continue_url)
+  outfile.write('\r\n')
+  
+  
+def LoginFromAuth(token, continue_url, auth_endpoint, outfile):
+  """Uses the auth token to fetch the userdata from appdrop, then sets the cookie"""
+  output_headers = []
+  
+  auth_url = "%s?token=%s" % (auth_endpoint,token)
+  logging.info('fetching: '+auth_url)
+  result = urlfetch.fetch(auth_url);
+  
+  if (result.status_code == 200):
+    userinfo = simplejson.loads(result.content)
+    output_headers.append(SetUserInfoCookie(userinfo['email'], userinfo['nickname'], userinfo['admin']))
+    
 
-    redirect_url = continue_url or login_url
-  elif email and continue_url:
-    redirect_url = continue_url
-
-  if redirect_url:
-    outfile.write('Status: 302 Redirecting to continue URL\r\n')
-    for header in output_headers:
-      outfile.write(header)
-    outfile.write('Location: %s\r\n' % redirect_url)
-    outfile.write('\r\n')
-  else:
-    outfile.write('Status: 200\r\n')
-    outfile.write('\r\n')
-    outfile.write(RenderLoginTemplate(login_url,
-                                      continue_url,
-                                      email,
-                                      admin))
+  outfile.write('Status: 302 Redirecting to continue URL\r\n')
+  for header in output_headers:
+    outfile.write(header)
+  outfile.write('Location: %s\r\n' % continue_url)
+  outfile.write('\r\n')
 
 
 def main():
-  """Runs the login and logout CGI script."""
+  """Runs the login and logout CGI redirector script."""
   form = cgi.FieldStorage()
   login_url = os.environ['PATH_INFO']
-  email = os.environ.get('USER_EMAIL', '')
-  admin = os.environ.get('USER_IS_ADMIN', '0') == '1'
-
   action = form.getfirst(ACTION_PARAM)
-  set_email = form.getfirst(EMAIL_PARAM, '')
-  set_admin = form.getfirst(ADMIN_PARAM, '') == 'True'
-  continue_url = form.getfirst(CONTINUE_PARAM, '')
 
-  LoginCGI(login_url,
-           email,
-           admin,
-           action,
-           set_email,
-           set_admin,
-           continue_url,
-           sys.stdout)
+  if action == None:
+    action = 'Login'
+  
+  continue_url = form.getfirst(CONTINUE_PARAM, '')
+  auth_token = form.getfirst('auth','')
+  # todo these need changing on deploy
+  auth_endpoint = "http://localhost:3001/auth"
+  login_service_endpoint = "http://localhost:3001/login"
+  
+  if action.lower() == LOGOUT_ACTION.lower():
+    Logout(continue_url, sys.stdout)
+  elif auth_token == '':
+    LoginServiceRedirect(continue_url, login_service_endpoint, sys.stdout)
+  else:
+    LoginFromAuth(auth_token, continue_url, auth_endpoint, sys.stdout)
+
   return 0
 
 
