@@ -274,7 +274,8 @@ class MatcherDispatcher(URLDispatcher):
                login_url,
                url_matchers,
                get_user_info=dev_appserver_login.GetUserInfo,
-               login_redirect=dev_appserver_login.LoginRedirect):
+               login_redirect=dev_appserver_login.LoginRedirect,
+               clear_cookies=dev_appserver_login.ClearUserInfoCookie):
     """Initializer.
 
     Args:
@@ -286,6 +287,7 @@ class MatcherDispatcher(URLDispatcher):
     self._url_matchers = tuple(url_matchers)
     self._get_user_info = get_user_info
     self._login_redirect = login_redirect
+    self._clear_cookies = clear_cookies
 
   def Dispatch(self,
                relative_url,
@@ -301,7 +303,7 @@ class MatcherDispatcher(URLDispatcher):
     path variable supplied to this method is ignored.
     """
     cookies = ', '.join(headers.getheaders('cookie'))
-    email, nickname, admin = self._get_user_info(cookies)
+    email, nickname, admin, valid_cookie = self._get_user_info(cookies)
 
     for matcher in self._url_matchers:
       dispatcher, matched_path, requires_login, admin_only = matcher.Match(relative_url)
@@ -319,6 +321,15 @@ class MatcherDispatcher(URLDispatcher):
           base_env_dict['SERVER_PORT'],
           relative_url,
           outfile)
+      elif not valid_cookie:
+        output_headers = []
+        output_headers.append(self._clear_cookies())  
+        outfile.write('Status: 302 Redirecting to continue URL\r\n')
+        for header in output_headers:
+          outfile.write(header)
+        outfile.write('Location: %s\r\n' % relative_url)
+        outfile.write('\r\n')
+
       elif admin_only and not admin:
         outfile.write('Status: %d Not authorized\r\n'
                       '\r\n'
@@ -479,7 +490,7 @@ def SetupEnvironment(cgi_path,
   env['CONTENT_LENGTH'] = headers.getheader('content-length', '')
 
   cookies = ', '.join(headers.getheaders('cookie'))
-  email, nickname, admin = get_user_info(cookies)
+  email, nickname, admin, valid_cookie = get_user_info(cookies)
   env['USER_EMAIL'] = email
 
   if admin:

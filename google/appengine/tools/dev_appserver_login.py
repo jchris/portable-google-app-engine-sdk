@@ -69,6 +69,7 @@ def GetUserInfo(http_cookie, cookie_name=COOKIE_NAME):
   cookie = Cookie.SimpleCookie(http_cookie)
 
   cookie_value = ''
+  valid_cookie = True
   if cookie_name in cookie:
     cookie_value = cookie[cookie_name].value
 
@@ -81,10 +82,11 @@ def GetUserInfo(http_cookie, cookie_name=COOKIE_NAME):
     vhsh = sha.new(email+nickname+admin+COOKIE_SECRET).hexdigest()
     if hsh != vhsh:
       logging.info(email+" had invalid cookie")
+      valid_cookie = False
       # todo clear the cookie
       # redirect to os.environ['PATH_INFO'] with the cookier clearing?
     
-  return email, nickname, (admin == 'True')
+  return email, nickname, (admin == 'True'), valid_cookie
 
 
 def CreateCookieData(email, nickname, admin):
@@ -164,8 +166,10 @@ def LoginRedirect(login_url,
   outfile.write('Status: 302 Requires login\r\n')
   outfile.write('Location: %s\r\n\r\n' % redirect_url)
 
-def LoginServiceRedirect(dest_url, endpoint, outfile):
-  redirect_url = '%s?%s=%s' % (endpoint, CONTINUE_PARAM, urllib.quote(dest_url))
+def LoginServiceRedirect(dest_url, endpoint, ah_url, outfile):
+  redirect_url = '%s?%s=%s' % (endpoint, 
+                        CONTINUE_PARAM, 
+                        urllib.quote('%s?%s=%s' %(ah_url,CONTINUE_PARAM,dest_url)))
                                            
   outfile.write('Status: 302 Redirecting to login service URL\r\n')
   outfile.write('Location: %s\r\n' % redirect_url)
@@ -182,14 +186,14 @@ def Logout(continue_url, outfile):
   outfile.write('\r\n')
   
   
-def LoginFromAuth(token, continue_url, auth_endpoint, outfile):
+def LoginFromAuth(token, continue_url, auth_endpoint, host, outfile):
   """Uses the auth token to fetch the userdata from appdrop, then sets the cookie"""
   output_headers = []
   
-  auth_url = "%s?token=%s" % (auth_endpoint,token)
+  auth_url = "%s?token=%s&app=%s" % (auth_endpoint,token,host)
   logging.info('fetching: '+auth_url)
   result = urlfetch.fetch(auth_url);
-  
+  logging.info('result: '+result.content)
   if (result.status_code == 200):
     userinfo = simplejson.loads(result.content)
     output_headers.append(SetUserInfoCookie(userinfo['email'], userinfo['nickname'], userinfo['admin']))
@@ -205,7 +209,13 @@ def LoginFromAuth(token, continue_url, auth_endpoint, outfile):
 def main():
   """Runs the login and logout CGI redirector script."""
   form = cgi.FieldStorage()
-  login_url = os.environ['PATH_INFO']
+  ah_path = os.environ['PATH_INFO']
+  host = 'http://'+os.environ['SERVER_NAME']
+  if os.environ['SERVER_PORT'] != '80':
+    host = host + ":" + os.environ['SERVER_PORT']
+  
+  ah_login_url = host+ah_path
+  
   action = form.getfirst(ACTION_PARAM)
 
   if action == None:
@@ -220,9 +230,9 @@ def main():
   if action.lower() == LOGOUT_ACTION.lower():
     Logout(continue_url, sys.stdout)
   elif auth_token == '':
-    LoginServiceRedirect(continue_url, login_service_endpoint, sys.stdout)
+    LoginServiceRedirect(continue_url, login_service_endpoint, ah_login_url, sys.stdout)
   else:
-    LoginFromAuth(auth_token, continue_url, auth_endpoint, sys.stdout)
+    LoginFromAuth(auth_token, continue_url, auth_endpoint, host, sys.stdout)
 
   return 0
 

@@ -160,6 +160,7 @@ def ParseArguments(argv):
         'enable_sendmail',
         'help',
         'history_path=',
+        'login_url=',
         'port=',
         'require_indexes',
         'smtp_host=',
@@ -193,6 +194,9 @@ def ParseArguments(argv):
 
     if option == '--datastore_path':
       option_dict[ARG_DATASTORE_PATH] = value
+
+    if option == '--login_url':
+      option_dict[ARG_LOGIN_URL] = value
 
     if option == '--history_path':
       option_dict[ARG_HISTORY_PATH] = value
