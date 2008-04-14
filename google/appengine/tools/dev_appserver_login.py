@@ -211,8 +211,8 @@ def main():
   form = cgi.FieldStorage()
   ah_path = os.environ['PATH_INFO']
   host = 'http://'+os.environ['SERVER_NAME']
-  if os.environ['SERVER_PORT'] != '80':
-    host = host + ":" + os.environ['SERVER_PORT']
+  # if os.environ['SERVER_PORT'] != '80':
+    # host = host + ":" + os.environ['SERVER_PORT']
   
   ah_login_url = host+ah_path
   
