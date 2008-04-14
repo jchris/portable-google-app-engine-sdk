@@ -492,6 +492,7 @@ def SetupEnvironment(cgi_path,
   cookies = ', '.join(headers.getheaders('cookie'))
   email, nickname, admin, valid_cookie = get_user_info(cookies)
   env['USER_EMAIL'] = email
+  env['USER_NICKNAME'] = nickname
 
   if admin:
     env['USER_IS_ADMIN'] = '1'

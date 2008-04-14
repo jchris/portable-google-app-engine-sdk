@@ -62,7 +62,7 @@ class User(object):
   """
 
 
-  def __init__(self, email=None, _auth_domain=None):
+  def __init__(self, email=None, _auth_domain=None, nickname=None):
     """Constructor.
 
     Args:
@@ -76,6 +76,10 @@ class User(object):
 
     assert _auth_domain
 
+    if nickname is None:
+      assert 'USER_NICKNAME' in os.environ
+      nickname = os.environ['USER_NICKNAME']
+
     if email is None:
       assert 'USER_EMAIL' in os.environ
       email = os.environ['USER_EMAIL']
@@ -83,6 +87,7 @@ class User(object):
     if not email:
       raise UserNotFoundError
 
+    self.__nickname = nickname
     self.__email = email
     self.__auth_domain = _auth_domain
 
@@ -93,6 +98,8 @@ class User(object):
     with respect to this application. It will be an email address for some
     users, but not all.
     """
+    if self.__nickname:
+      return self.__nickname
     if (self.__email and self.__auth_domain and
         self.__email.endswith('@' + self.__auth_domain)):
       suffix_len = len(self.__auth_domain) + 1
