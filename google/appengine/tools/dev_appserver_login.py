@@ -224,8 +224,10 @@ def main():
   continue_url = form.getfirst(CONTINUE_PARAM, '')
   auth_token = form.getfirst('auth','')
   # todo these need changing on deploy
-  auth_endpoint = "http://localhost:3001/auth"
-  login_service_endpoint = "http://localhost:3001/login"
+  # auth_endpoint = "http://localhost:3001/auth"
+  # login_service_endpoint = "http://localhost:3001/login"
+  auth_endpoint = "http://appdrop.com/auth"
+  login_service_endpoint = "http://appdrop.com/login"
   
   if action.lower() == LOGOUT_ACTION.lower():
     Logout(continue_url, sys.stdout)
