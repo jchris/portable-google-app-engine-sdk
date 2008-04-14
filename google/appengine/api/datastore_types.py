@@ -974,6 +974,7 @@ def ToPropertyPb(name, values):
       pbvalue.mutable_pointvalue().set_y(v.lon)
     elif isinstance(v, users.User):
       pbvalue.mutable_uservalue().set_email(v.email().encode('utf-8'))
+      pbvalue.mutable_uservalue().set_nickname(v.nickname().encode('utf-8'))
       pbvalue.mutable_uservalue().set_auth_domain(
         v.auth_domain().encode('utf-8'))
       pbvalue.mutable_uservalue().set_gaiaid(0)
@@ -1067,7 +1068,8 @@ def FromPropertyPb(pb):
   elif pbval.has_uservalue():
     email = unicode(pbval.uservalue().email().decode('utf-8'))
     auth_domain = unicode(pbval.uservalue().auth_domain().decode('utf-8'))
-    value = users.User(email=email, _auth_domain=auth_domain)
+    nickname = unicode(pbval.uservalue().nickname().decode('utf-8'))
+    value = users.User(email=email, _auth_domain=auth_domain, nickname=nickname)
   elif pbval.has_referencevalue():
     value = FromReferenceProperty(pbval)
   elif pbval.has_int64value():

@@ -611,7 +611,7 @@ class DatastoreFileStub(object):
             value_pb.mutable_uservalue().set_gaiaid(minint)
             value_pb.mutable_uservalue().set_email('')
             value_pb.mutable_uservalue().set_auth_domain('')
-            value_pb.mutable_uservalue().clear_nickname()
+            value_pb.mutable_uservalue().set_nickname('')
           elif value_pb.has_referencevalue():
             value_pb.clear_referencevalue()
             value_pb.mutable_referencevalue().set_app('')
