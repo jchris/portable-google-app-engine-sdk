@@ -108,8 +108,8 @@ class UserServiceStub(object):
       return continue_url
 
     host = os.environ['SERVER_NAME']
-    if os.environ['SERVER_PORT'] != '80':
-      host = host + ":" + os.environ['SERVER_PORT']
+    # if os.environ['SERVER_PORT'] != '80':
+      # host = host + ":" + os.environ['SERVER_PORT']
 
     if path == '':
       path = '/'
