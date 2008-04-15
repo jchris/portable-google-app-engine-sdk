@@ -159,7 +159,8 @@ def LoginRedirect(login_url,
   """
   dest_url = "http://%s:%s%s" % (hostname, port, relative_url)
   redirect_url = 'http://%s:%s%s?%s=%s' % (hostname,
-                                           port,
+                                           # port,
+                                           '80',
                                            login_url,
                                            CONTINUE_PARAM,
                                            urllib.quote(dest_url))
